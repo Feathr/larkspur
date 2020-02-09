@@ -2,9 +2,6 @@ import math
 import hashlib
 from struct import pack, unpack
 
-FNV_PRIME = 16777619
-FNV_OFFSET = 2166136261
-
 
 def make_hashes(num_slices, num_bits):
     # choose packing format based on the size of the bitfield
@@ -92,20 +89,20 @@ class BloomFilter:
         self.name = name
         self.meta_name = f'bfmeta:{name}'
         meta = self.connection.hgetall(self.meta_name)
-        self.error_rate = meta.get('error_rate') or error_rate
-        self.num_slices = meta.get('num_slices') or num_slices
-        self.bits_per_slice = meta.get('bits_per_slice') or bits_per_slice
-        self.capacity = meta.get('capacity') or capacity
-        self.num_bits = meta.get('num_bits') or num_slices * bits_per_slice
-        self.count = meta.get('count') or 0
+        self.error_rate = float(meta.get(b'error_rate').decode()) or error_rate
+        self.num_slices = int(meta.get(b'num_slices').decode()) or num_slices
+        self.bits_per_slice = int(meta.get(b'bits_per_slice').decode()) or bits_per_slice
+        self.capacity = int(meta.get(b'capacity').decode()) or capacity
+        self.num_bits = int(meta.get(b'num_bits').decode()) or num_slices * bits_per_slice
+        self.count = int(meta.get(b'count').decode()) or 0
         if not self.connection.exists(self.meta_name):
             self.connection.hmset(self.meta_name, {
-                'error_rate': self.error_rate,
-                'num_slices': self.num_slices,
-                'bits_per_slice': self.bits_per_slice,
-                'capacity': self.capacity,
-                'num_bits': self.num_bits,
-                'count': self.count
+                b'error_rate': self.error_rate,
+                b'num_slices': self.num_slices,
+                b'bits_per_slice': self.bits_per_slice,
+                b'capacity': self.capacity,
+                b'num_bits': self.num_bits,
+                b'count': self.count
             })
         self.hasher, hashfn = make_hashes(self.num_slices, self.bits_per_slice)
 
