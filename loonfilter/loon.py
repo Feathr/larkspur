@@ -3,7 +3,23 @@ import hashlib
 from struct import pack, unpack
 
 
+def deserialize_hm(hm):
+    # kinda like a schema
+    out = {}
+    for key, value in hm.items():
+        decoded_key = key.decode()
+        if decoded_key in ['error_rate', 'ratio']:
+            parsed = float(value.decode())
+        else:
+            parsed = int(value.decode())
+        out[key.decode()] = parsed
+    return out
+
+
 def make_hashes(num_slices, num_bits):
+    # we're going to hash the input by putting into a cryptographic hash function.
+    # we need to choose the right function so we get enough bits to get enough
+    # indices for the number of slices
     # choose packing format based on the size of the bitfield
     if num_bits >= (1 << 31):
         format_code = 'Q'
@@ -81,28 +97,27 @@ class BloomFilter:
         num_slices = int(math.ceil(math.log(1.0 / error_rate, 2)))
         bits_per_slice = int(
             math.ceil(
-                (capacity * abs(math.log(error_rate))) /
-                (num_slices * (math.log(2) ** 2))
+                (capacity * abs(math.log(error_rate))) / (num_slices * (math.log(2) ** 2))
             )
         )
         self.connection = connection
         self.name = name
         self.meta_name = f'bfmeta:{name}'
-        meta = self.connection.hgetall(self.meta_name)
-        self.error_rate = float(meta.get(b'error_rate').decode()) or error_rate
-        self.num_slices = int(meta.get(b'num_slices').decode()) or num_slices
-        self.bits_per_slice = int(meta.get(b'bits_per_slice').decode()) or bits_per_slice
-        self.capacity = int(meta.get(b'capacity').decode()) or capacity
-        self.num_bits = int(meta.get(b'num_bits').decode()) or num_slices * bits_per_slice
-        self.count = int(meta.get(b'count').decode()) or 0
+        meta = deserialize_hm(self.connection.hgetall(self.meta_name)) or {}
+        self.error_rate = meta.get('error_rate') or error_rate
+        self.num_slices = meta.get('num_slices') or num_slices
+        self.bits_per_slice = meta.get('bits_per_slice') or bits_per_slice
+        self.capacity = meta.get('capacity') or capacity
+        self.num_bits = meta.get('num_bits') or num_slices * bits_per_slice
+        self.count = meta.get('count') or 0
         if not self.connection.exists(self.meta_name):
             self.connection.hmset(self.meta_name, {
-                b'error_rate': self.error_rate,
-                b'num_slices': self.num_slices,
-                b'bits_per_slice': self.bits_per_slice,
-                b'capacity': self.capacity,
-                b'num_bits': self.num_bits,
-                b'count': self.count
+                'error_rate': self.error_rate,
+                'num_slices': self.num_slices,
+                'bits_per_slice': self.bits_per_slice,
+                'capacity': self.capacity,
+                'num_bits': self.num_bits,
+                'count': self.count
             })
         self.hasher, hashfn = make_hashes(self.num_slices, self.bits_per_slice)
 
@@ -118,9 +133,9 @@ class BloomFilter:
         return all(res)
 
     def add(self, key, skip_check=False):
-        indexes = self.hasher(key)
         if self.count > self.capacity:
             raise IndexError('BloomFilter is at capacity')
+        indexes = self.hasher(key)
         offset = 0
 
         pipe = self.connection.pipeline()
@@ -135,13 +150,133 @@ class BloomFilter:
         return already_present
 
     def bulk_add(self, keys):
-        if self.count != 0:
-            raise IndexError('BloomFilter is not empty.')
+        if self.count > self.capacity:
+            raise IndexError('BloomFilter is at capacity')
         pipe = self.connection.pipeline()
         for key in keys:
             offset = 0
             indexes = self.hasher(key)
             for index in indexes:
                 pipe.setbit(self.name, offset + index, 1)
-        self.count = pipe.hset(self.meta_name, 'count', len(set(keys)))
+        res = pipe.execute()
+        buf = []
+        bulk_increment = 0
+        for index, val in enumerate(res):
+            buf.append(val)
+            if len(buf) == self.num_slices:
+                if not all(buf):
+                    bulk_increment += 1
+                buf = []
+        self.count = self.connection.hincrby(self.meta_name, 'count', bulk_increment)
+
+    def flush(self, pipe=None):
+        execute = False
+        if not pipe:
+            pipe = self.connection.pipeline()
+            execute = True
+        pipe.delete(self.name)
+        pipe.delete(self.meta_name)
+        if execute:
+            pipe.execute()
+
+
+class ScalableBloomFilter:
+    SMALL_SET_GROWTH = 2
+    LARGE_SET_GROWTH = 4
+
+    def __init__(
+        self,
+        connection,
+        name,
+        initial_capacity=1000,
+        error_rate=0.001,
+        scale=LARGE_SET_GROWTH,
+        ratio=0.9
+    ):
+        self.name = name
+        self.meta_name = f'sbfmeta:{name}'
+        self.connection = connection
+        meta = deserialize_hm(self.connection.hgetall(self.meta_name))
+        self.error_rate = meta.get('error_rate') or error_rate
+        self.scale = meta.get('scale') or scale
+        self.ratio = meta.get('ratio') or ratio
+        self.initial_capacity = meta.get('initial_capacity') or initial_capacity
+        if not self.connection.exists(self.meta_name):
+            self._create_meta()
+        filter_names = sorted(list(self.connection.smembers(self.name)))
+        self.filters = [
+            BloomFilter(connection, fn.encode('utf8'), initial_capacity, error_rate)
+            for index, fn in enumerate(filter_names)
+        ]
+
+    def _create_meta(self):
+        self.connection.hmset(self.meta_name, {
+            'error_rate': self.error_rate,
+            'scale': self.scale,
+            'ratio': self.ratio,
+            'initial_capacity': self.initial_capacity,
+        })
+
+    def _get_next_filter(self):
+        if not self.filters:
+            bf_name = f'{self.name}:bf0'
+            bf = BloomFilter(
+                self.connection,
+                bf_name,
+                capacity=self.initial_capacity,
+                error_rate=self.error_rate
+            )
+            self.filters.append(bf)
+            self.connection.sadd(self.name, bf.name)
+        else:
+            bf = self.filters[-1]
+            if bf.count >= bf.capacity:
+                bf_name = f'{self.name}:bf{len(self.filters)}'
+                bf = BloomFilter(
+                    self.connection,
+                    bf_name,
+                    capacity=bf.capacity * self.scale,
+                    error_rate=bf.error_rate * self.ratio,
+                )
+                self.filters.append(bf)
+                self.connection.sadd(self.name, bf.name)
+        return bf
+
+    def __contains__(self, key):
+        for f in reversed(self.filters):
+            if key in f:
+                return True
+        return False
+
+    def add(self, key):
+        if key in self:
+            return True
+        bf = self._get_next_filter()
+        return bf.add(key)
+
+    def bulk_add(self, keys):
+        index = 0
+        while index < len(keys):
+            bf = self._get_next_filter()
+            chunk_size = min(bf.capacity - bf.count, len(keys))
+            chunk = keys[index:index + chunk_size]
+            bf.bulk_add(chunk)
+            index += chunk_size
+
+    def flush(self):
+        pipe = self.connection.pipeline()
+        pipe.delete(self.name)
+        pipe.delete(self.meta_name)
+        for bf in self.filters:
+            bf.flush(pipe)
         pipe.execute()
+        self.filters = []
+        self._create_meta()
+
+    @property
+    def capacity(self):
+        return sum([bf.capacity for bf in self.filters])
+
+    @property
+    def count(self):
+        return sum([bf.count for bf in self.filters])
