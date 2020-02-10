@@ -3,6 +3,7 @@ import redis
 from bson import ObjectId
 from .loon import BloomFilter, ScalableBloomFilter
 
+
 class LoonTestCase(unittest.TestCase):
 
     def setUp(self):

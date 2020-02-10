@@ -110,6 +110,8 @@ class BloomFilter:
         self.capacity = meta.get('capacity') or capacity
         self.num_bits = meta.get('num_bits') or num_slices * bits_per_slice
         self.count = meta.get('count') or 0
+        if self.num_bits > 1 << 32:
+            raise ValueError('capacity too large or error rate too low to store in redis')
         if not self.connection.exists(self.meta_name):
             self._create_meta()
         self.hasher, hashfn = make_hashes(self.num_slices, self.bits_per_slice)
@@ -242,8 +244,8 @@ class ScalableBloomFilter:
                 bf = BloomFilter(
                     self.connection,
                     bf_name,
-                    capacity=bf.capacity * self.scale,
-                    error_rate=bf.error_rate * self.ratio,
+                    capacity=min(bf.capacity * self.scale, 1000000000),
+                    error_rate=max(bf.error_rate * self.ratio, 0.000001),
                 )
                 self.filters.append(bf)
                 self.connection.sadd(self.name, bf.name)
@@ -256,8 +258,6 @@ class ScalableBloomFilter:
         return False
 
     def add(self, key):
-        if key in self:
-            return True
         bf = self._get_next_filter()
         return bf.add(key)
 
