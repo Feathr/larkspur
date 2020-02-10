@@ -111,15 +111,18 @@ class BloomFilter:
         self.num_bits = meta.get('num_bits') or num_slices * bits_per_slice
         self.count = meta.get('count') or 0
         if not self.connection.exists(self.meta_name):
-            self.connection.hmset(self.meta_name, {
-                'error_rate': self.error_rate,
-                'num_slices': self.num_slices,
-                'bits_per_slice': self.bits_per_slice,
-                'capacity': self.capacity,
-                'num_bits': self.num_bits,
-                'count': self.count
-            })
+            self._create_meta()
         self.hasher, hashfn = make_hashes(self.num_slices, self.bits_per_slice)
+
+    def _create_meta(self):
+        self.connection.hmset(self.meta_name, {
+            'error_rate': self.error_rate,
+            'num_slices': self.num_slices,
+            'bits_per_slice': self.bits_per_slice,
+            'capacity': self.capacity,
+            'num_bits': self.num_bits,
+            'count': self.count
+        })
 
     def __contains__(self, key):
         indexes = self.hasher(key)
@@ -158,6 +161,7 @@ class BloomFilter:
             indexes = self.hasher(key)
             for index in indexes:
                 pipe.setbit(self.name, offset + index, 1)
+                offset += self.bits_per_slice
         res = pipe.execute()
         buf = []
         bulk_increment = 0
@@ -176,8 +180,11 @@ class BloomFilter:
             execute = True
         pipe.delete(self.name)
         pipe.delete(self.meta_name)
+        pipe.hset(self.meta_name, 'count', 0)
+
         if execute:
             pipe.execute()
+        self.count = 0
 
 
 class ScalableBloomFilter:

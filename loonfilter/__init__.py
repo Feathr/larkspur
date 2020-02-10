@@ -1,1 +1,3 @@
-from .loon import BloomFilter
+from .loon import BloomFilter, ScalableBloomFilter
+
+__all__ = ['BloomFilter', 'ScalableBloomFilter']
