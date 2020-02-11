@@ -167,7 +167,7 @@ class BloomFilter:
         res = pipe.execute()
         buf = []
         bulk_increment = 0
-        for index, val in enumerate(res):
+        for val in res:
             buf.append(val)
             if len(buf) == self.num_slices:
                 if not all(buf):
@@ -182,7 +182,6 @@ class BloomFilter:
             execute = True
         pipe.delete(self.name)
         pipe.delete(self.meta_name)
-        pipe.hset(self.meta_name, 'count', 0)
 
         if execute:
             pipe.execute()
@@ -214,8 +213,8 @@ class ScalableBloomFilter:
             self._create_meta()
         filter_names = sorted(list(self.connection.smembers(self.name)))
         self.filters = [
-            BloomFilter(connection, fn.decode('utf8'), initial_capacity, error_rate)
-            for index, fn in enumerate(filter_names)
+            BloomFilter(connection, fn.decode('utf8'))
+            for fn in filter_names
         ]
 
     def _create_meta(self):
