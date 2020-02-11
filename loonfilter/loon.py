@@ -214,7 +214,7 @@ class ScalableBloomFilter:
             self._create_meta()
         filter_names = sorted(list(self.connection.smembers(self.name)))
         self.filters = [
-            BloomFilter(connection, fn.encode('utf8'), initial_capacity, error_rate)
+            BloomFilter(connection, fn.decode('utf8'), initial_capacity, error_rate)
             for index, fn in enumerate(filter_names)
         ]
 

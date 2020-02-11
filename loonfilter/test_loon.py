@@ -98,3 +98,12 @@ class TestScalableBloomFilter(LoonTestCase):
         sbf.flush()
         assert sbf.count == 0
         assert(all([oid not in sbf for oid in members]))
+
+    def test_existing_filter(self):
+        sbf = ScalableBloomFilter(self.r, 'test', initial_capacity=1000, error_rate=0.001)
+        members = [str(ObjectId()) for x in range(3000)]
+        sbf.bulk_add(members)
+        sbf2 = ScalableBloomFilter(self.r, 'test')
+        assert sbf2.count == sbf.count
+        assert sbf2.error_rate == sbf.error_rate
+        assert sbf2.capacity == sbf.capacity

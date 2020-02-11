@@ -5,7 +5,7 @@ with open('README.md', 'r') as fh:
 
 setuptools.setup(
     name='loon-filter',
-    version='0.0.1',
+    version='0.1.0',
     author='Thomas R Storey',
     author_email='thomas@feathr.co',
     description='a Redis-backed scalable bloom filter',
