@@ -5,7 +5,7 @@ import time
 import math
 import redis
 from bson import ObjectId
-from loon import BloomFilter
+from larkspur import BloomFilter
 
 
 def main(capacity=10000, error_rate=0.01):

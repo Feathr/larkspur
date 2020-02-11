@@ -1,11 +1,11 @@
 version: '3'
 services:
-  loon:
-    image: loon:latest
+  larkspur:
+    image: larkspur:latest
     links:
       - redis
     command:
-      pytest loonfilter/test_loon.py
+      pytest larkspur/test_larkspur.py
 
   redis:
     restart: unless-stopped

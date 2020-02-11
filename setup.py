@@ -4,14 +4,14 @@ with open('README.md', 'r') as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name='loon-filter',
-    version='0.1.0',
+    name='larkspur',
+    version='0.1.1',
     author='Thomas R Storey',
     author_email='thomas@feathr.co',
     description='a Redis-backed scalable bloom filter',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    url='https://bitbucket.org/feathr/loon-filter',
+    url='https://bitbucket.org/feathr/larkspur',
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",

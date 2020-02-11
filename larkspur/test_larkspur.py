@@ -1,17 +1,17 @@
 import unittest
 import redis
 from bson import ObjectId
-from .loon import BloomFilter, ScalableBloomFilter
+from .larkspur import BloomFilter, ScalableBloomFilter
 
 
-class LoonTestCase(unittest.TestCase):
+class LarkspurTestCase(unittest.TestCase):
 
     def setUp(self):
         self.r = redis.StrictRedis(host='redis', db=3)
         self.r.flushdb()
 
 
-class TestBloomFilter(LoonTestCase):
+class TestBloomFilter(LarkspurTestCase):
 
     def test_add(self):
         bf = BloomFilter(self.r, 'test', capacity=1000, error_rate=0.001)
@@ -57,7 +57,7 @@ class TestBloomFilter(LoonTestCase):
         assert(all([oid not in bf for oid in members]))
 
 
-class TestScalableBloomFilter(LoonTestCase):
+class TestScalableBloomFilter(LarkspurTestCase):
     def test_add(self):
         sbf = ScalableBloomFilter(self.r, 'test', initial_capacity=1000, error_rate=0.001)
         members = [str(ObjectId()) for x in range(6000)]
