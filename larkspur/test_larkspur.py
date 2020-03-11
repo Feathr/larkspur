@@ -107,3 +107,14 @@ class TestScalableBloomFilter(LarkspurTestCase):
         assert sbf2.count == sbf.count
         assert sbf2.error_rate == sbf.error_rate
         assert sbf2.capacity == sbf.capacity
+
+    def test_expire(self):
+        sbf = ScalableBloomFilter(self.r, 'test', initial_capacity=1000, error_rate=0.001)
+        members = [str(ObjectId()) for x in range(3000)]
+        sbf.bulk_add(members)
+        sbf.expire(60)
+        for bf in sbf.filters:
+            assert self.r.ttl(bf.name) == 60
+            assert self.r.ttl(bf.meta_name) == 60
+        assert self.r.ttl(sbf.name) == 60
+        assert self.r.ttl(sbf.meta_name) == 60

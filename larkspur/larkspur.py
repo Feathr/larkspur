@@ -187,6 +187,18 @@ class BloomFilter:
             pipe.execute()
         self.count = 0
 
+    def expire(self, time, pipe=None):
+        execute = False
+        if not pipe:
+            pipe = self.connection.pipeline()
+            execute = True
+
+        pipe.expire(self.name, time)
+        pipe.expire(self.meta_name, time)
+
+        if execute:
+            pipe.execute()
+
 
 class ScalableBloomFilter:
     SMALL_SET_GROWTH = 2
@@ -213,7 +225,7 @@ class ScalableBloomFilter:
             self._create_meta()
         filter_names = sorted(list(self.connection.smembers(self.name)))
         self.filters = [
-            BloomFilter(connection, fn.decode('utf8'))
+            BloomFilter(connection, fn.decode('utf8'), self.initial_capacity)
             for fn in filter_names
         ]
 
@@ -278,6 +290,14 @@ class ScalableBloomFilter:
         pipe.execute()
         self.filters = []
         self._create_meta()
+
+    def expire(self, time):
+        pipe = self.connection.pipeline()
+        pipe.expire(self.name, time)
+        pipe.expire(self.meta_name, time)
+        for bf in self.filters:
+            bf.expire(time, pipe)
+        pipe.execute()
 
     @property
     def capacity(self):

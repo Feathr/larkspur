@@ -5,7 +5,7 @@ with open('README.md', 'r') as fh:
 
 setuptools.setup(
     name='larkspur',
-    version='0.1.1',
+    version='0.2.0',
     author='Thomas R Storey',
     author_email='thomas@feathr.co',
     description='a Redis-backed scalable bloom filter',
