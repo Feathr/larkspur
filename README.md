@@ -64,7 +64,7 @@ Now you can build and publish a new release to pypi:
 
 ```
 poetry build
-poetry publish -r pypi
+poetry publish
 ```
 
 Poetry
