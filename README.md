@@ -52,9 +52,9 @@ poetry run pytest
 
 ## Deploying
 
-Larkspur is included in `anhinga` as a dependency installed by `pip`. I wanted avoid known annoyances with installing dependencies directly from github/bitbucket so I decided to make this a public repo packaged on PyPI. So to deploy changes, you first have to upload a new release to PyPI. Then anhinga will use the new version the next time you deploy anhinga, assuming the semver query is compatible with the version of the new release.
+Larkspur is included in `anhinga` as a dependency installed by `pip`. I wanted to avoid known annoyances with installing dependencies directly from github/bitbucket so I decided to make this a public repo packaged on PyPI. So to deploy changes, you first have to upload a new release to PyPI. Then anhinga will use the new version the next time you deploy anhinga, assuming the semver query is compatible with the version of the new release.
 To release a new version, make sure to first update the package version in `pyproject.toml`.
-You will also need to configure your pypi API token. You can get the API token from the `larkspur-pypi-api-token` in AWS SecretsManager. Add it to your poetry config with:
+You will also need to configure your pypi API token. You can get the API token from the `larkspur-pypi-api-token` secret in AWS SecretsManager. Add it to your poetry config with:
 
 ```
 poetry config pypi-token.pypi <the API token>
@@ -66,8 +66,6 @@ Now you can build and publish a new release to pypi:
 poetry build
 poetry publish
 ```
-
-Poetry
 
 ## Inspiration
 
