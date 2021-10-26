@@ -18,21 +18,31 @@ def deserialize_hm(hm):
 
 def make_hashes(num_slices, num_bits):
     # we're going to hash the input by putting into a cryptographic hash function.
+    # From that hash, we need to be able to derive integer indexes in a redis bitfield
+    # of a known size. That means we need to carefully choose the hash function so that
+    # it's digest size is appropriate to the size of the bitfield given a packed
+    # representation of its output.
+
     # we need to choose the right function so we get enough bits to get enough
     # indices for the number of slices
-    # choose packing format based on the size of the bitfield
+    # choose packing format based on the size of the bitfield slices
+    # see: https://docs.python.org/3/library/struct.html#format-characters
+
+    # Based on the size of the bitfield slice we need to index into, we need to
+    # choose a representation of each index that is big enough to actually represent
+    # any index in the slice.
     if num_bits >= (1 << 31):
-        format_code = 'Q'
+        format_code = 'Q'  # unsigned long (8 bytes)
         chunk_size = 8
     elif num_bits >= (1 << 15):
-        format_code = 'I'
+        format_code = 'I'  # unsigned int (4 bytes)
         chunk_size = 4
     else:
-        format_code = 'H'
+        format_code = 'H'  # unsigned short (2 bytes)
         chunk_size = 2
 
-    # choose hash algorithm based on the number of slices and the
-    # packing format
+    # Choose hash algorithm that produces a digest big enough
+    # to represent an index for each packed chunk.
     total_hash_bits = 8 * num_slices * chunk_size
     if total_hash_bits > 384:
         hashfn = hashlib.sha512
@@ -45,9 +55,9 @@ def make_hashes(num_slices, num_bits):
     else:
         hashfn = hashlib.md5
 
-    # format for how the bitfield indices will be packed into
+    # format for how the bitfield indices will be unpacked from
     # the hash. example:
-    # 'IIIIIIII' (8 unsigned ints (4 bits each))
+    # 'IIIIIIII' (8 unsigned ints (4 bytes each))
     pack_format = format_code * (hashfn().digest_size // chunk_size)
 
     # if the number of slices does not go into the pack format evenly
@@ -56,8 +66,10 @@ def make_hashes(num_slices, num_bits):
     if extra:
         num_salts += 1
 
-    # make a hash for each salt (often there will be just one salt)
-    # seed each hash with a hash derived from the salt
+    # Make a uniquely but deterministically salted hash function for each slice
+    # Each hash function uses its index as an initial string. This way they don't
+    # all produce the same hash for the same input and also can be reproduced
+    # each time the BloomFilter object is instantiated.
     salts = tuple(
         hashfn(
             hashfn(pack('I', i)).digest()
@@ -70,6 +82,11 @@ def make_hashes(num_slices, num_bits):
         else:
             key = str(key).encode('utf8')
         i = 0
+        # This is the core of how the Bloom filter works. We hash the input key using each of
+        # the presalted hash functions. Using the pack format, we unpack the hash into integers
+        # in the range of the size of our bitfield in redis. We will use the integers and index
+        # locations in that bitfield, setting the bits at each of those locations to 1 to indicate
+        # that some input key hashed to that bit in the past.
         for salt in salts:
             h = salt.copy()
             h.update(key)
