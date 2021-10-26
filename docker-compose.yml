@@ -5,7 +5,7 @@ services:
     links:
       - redis
     command:
-      pytest larkspur/test_larkspur.py
+      /root/.local/bin/poetry run pytest larkspur/test_larkspur.py
 
   redis:
     restart: unless-stopped
