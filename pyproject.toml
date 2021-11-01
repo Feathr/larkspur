@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "larkspur"
+version = "0.2.1"
+description = "a Redis-backed, scalable Bloom filter"
+authors = ["Thomas R Storey <orey.st@protonmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+redis = "^3.5.3"
+
+[tool.poetry.dev-dependencies]
+pytest = "^6.2.5"
+coverage = "^6.0.2"
+pymongo = "^3.12.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

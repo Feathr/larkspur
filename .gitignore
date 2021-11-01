@@ -1,5 +1,6 @@
 *.pyc
 .coverage
+.pypi-token
 htmlcov/
 build/
 dist/
