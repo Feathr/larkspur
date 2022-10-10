@@ -4,7 +4,7 @@ from struct import pack, unpack
 
 
 def deserialize_hm(hm):
-    # kinda like a schema
+    #kinda like a schema
     out = {}
     for key, value in hm.items():
         decoded_key = key.decode()
@@ -156,7 +156,7 @@ class BloomFilter:
 
     def add(self, key, skip_check=False):
         if self.count > self.capacity:
-            raise IndexError('BloomFilter is at capacity')
+            raise IndexError(f'BloomFilter is at capacity. Count: {self.count}. Capacity: {self.capacity} ')
         indexes = self.hasher(key)
         offset = 0
 
@@ -173,7 +173,7 @@ class BloomFilter:
 
     def bulk_add(self, keys):
         if self.count > self.capacity:
-            raise IndexError('BloomFilter is at capacity')
+            raise IndexError(f'BloomFilter is at capacity. Count: {self.count}. Capacity: {self.capacity}. ')
         pipe = self.connection.pipeline()
         for key in keys:
             offset = 0
@@ -218,6 +218,7 @@ class BloomFilter:
 
 
 class ScalableBloomFilter:
+   
     SMALL_SET_GROWTH = 2
     LARGE_SET_GROWTH = 4
 
@@ -228,7 +229,8 @@ class ScalableBloomFilter:
         initial_capacity=1000,
         error_rate=0.001,
         scale=LARGE_SET_GROWTH,
-        ratio=0.9
+        ratio=0.9,
+        threshold_scale=0.9
     ):
         self.name = name
         self.meta_name = f'sbfmeta:{name}'
@@ -237,6 +239,7 @@ class ScalableBloomFilter:
         self.error_rate = meta.get('error_rate') or error_rate
         self.scale = meta.get('scale') or scale
         self.ratio = meta.get('ratio') or ratio
+        self.threshold_scale = meta.get('threshold_scale') or threshold_scale
         self.initial_capacity = meta.get('initial_capacity') or initial_capacity
         if not self.connection.exists(self.meta_name):
             self._create_meta()
@@ -252,6 +255,7 @@ class ScalableBloomFilter:
             'scale': self.scale,
             'ratio': self.ratio,
             'initial_capacity': self.initial_capacity,
+            'threshold_scale': self.threshold_scale
         })
 
     def _get_next_filter(self):
@@ -267,7 +271,8 @@ class ScalableBloomFilter:
             self.connection.sadd(self.name, bf.name)
         else:
             bf = self.filters[-1]
-            if bf.count >= bf.capacity:
+            # check count vs 90% capacity, leave room to prevent race condition 
+            if bf.count >= bf.capacity * self.threshold_scale:
                 bf_name = f'{self.name}:bf{len(self.filters)}'
                 bf = BloomFilter(
                     self.connection,
