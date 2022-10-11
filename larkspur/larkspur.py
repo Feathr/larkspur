@@ -1,10 +1,11 @@
 import math
 import hashlib
 from struct import pack, unpack
+from typing import Any, List, Optional
 
 
-def deserialize_hm(hm):
-    #kinda like a schema
+def deserialize_hm(hm) -> dict:
+    # kinda like a schema
     out = {}
     for key, value in hm.items():
         decoded_key = key.decode()
@@ -16,7 +17,13 @@ def deserialize_hm(hm):
     return out
 
 
-def make_hashes(num_slices, num_bits):
+def make_hashes(num_slices: int, num_bits: Any):
+    """Makes hashes. Determine the hash function for each slice.
+
+    Args:
+        num_slices: number of slices
+        num_bits: number of bits for each slice
+    """
     # we're going to hash the input by putting into a cryptographic hash function.
     # From that hash, we need to be able to derive integer indexes in a redis bitfield
     # of a known size. That means we need to carefully choose the hash function so that
@@ -76,7 +83,9 @@ def make_hashes(num_slices, num_bits):
         ) for i in range(0, num_salts)
     )
 
-    def hasher(key):
+    def hasher(key: Any):
+        """Hashes the input item key.
+        """
         if isinstance(key, str):
             key = key.encode('utf8')
         else:
@@ -103,7 +112,21 @@ def make_hashes(num_slices, num_bits):
 
 class BloomFilter:
 
-    def __init__(self, connection, name, capacity, error_rate=0.001):
+    def __init__(self, connection, name: str, capacity: int, error_rate: Optional[float] = 0.001) -> None:
+        """
+        Initialize a new BloomFilter.
+
+        Parameters
+        ----------
+        connection : Redis client connection
+            The Redis client connection.
+        name : str
+            A bloom filter name.
+        capacity : int
+            A initial capacity of the bloom filter. Capacity must be greater than 0.
+        error_rate : float, optional
+            A initial error_rate of the bloom filter. Error_rate must be between 0 and 1. Default is 0.001.
+        """
         if not (0 < error_rate < 1):
             raise ValueError(
                 'error_rate must be float value between 0 and 1, exclusive.'
@@ -143,7 +166,17 @@ class BloomFilter:
             'count': self.count
         })
 
-    def __contains__(self, key):
+    def __contains__(self, key: Any) -> bool:
+        """Checks if bloom filter contains an item by checking if all bits of the hashed item are 1.
+        Contains false positive results.
+
+        Args:
+            key: the item needed to be checked
+
+        Returns:
+            True if bloom filter contains the item. Contains false positive results.
+            False if bloom filter does not contain the item.
+        """
         indexes = self.hasher(key)
         offset = 0
 
@@ -154,7 +187,19 @@ class BloomFilter:
         res = pipe.execute()
         return all(res)
 
-    def add(self, key, skip_check=False):
+    def add(self, key: Any, skip_check: Optional[bool] = False):
+        """Adds an item key into bloom filter.
+        Raises IndexError if the current count is larger than its capacity.
+        Hashes the item key and adds into the redis bitfield.
+        Increments count by 1 if any of the bit stored was 0 and returns false. Otherwise returns true.
+
+        Args:
+            key: An item need to be added into bloom filter.
+
+        Returns:
+            A boolean represents if count was incremented.
+            Increments count by 1 if any of the bit stored was 0 and returns false. Otherwise returns true.
+        """
         if self.count > self.capacity:
             raise IndexError(f'BloomFilter is at capacity. Count: {self.count}. Capacity: {self.capacity} ')
         indexes = self.hasher(key)
@@ -171,7 +216,15 @@ class BloomFilter:
             self.count = self.connection.hincrby(self.meta_name, 'count', 1)
         return already_present
 
-    def bulk_add(self, keys):
+    def bulk_add(self, keys: List[Any]):
+        """Adds items in chunk into bloom filter.
+        Raises IndexError if the current count is larger than its capacity.
+        For each item, hashes the item key and adds into redis bitfield.
+        Increment count by 1 if not all the bits were set to 1 by other item.
+
+        Args:
+            keys: An list of items
+        """
         if self.count > self.capacity:
             raise IndexError(f'BloomFilter is at capacity. Count: {self.count}. Capacity: {self.capacity}. ')
         pipe = self.connection.pipeline()
@@ -192,7 +245,10 @@ class BloomFilter:
                 buf = []
         self.count = self.connection.hincrby(self.meta_name, 'count', bulk_increment)
 
-    def flush(self, pipe=None):
+    def flush(self, pipe: Any | None) -> None:
+        """Deletes one or more keys specified by names.
+        Sets count as 0.
+        """
         execute = False
         if not pipe:
             pipe = self.connection.pipeline()
@@ -204,7 +260,9 @@ class BloomFilter:
             pipe.execute()
         self.count = 0
 
-    def expire(self, time, pipe=None):
+    def expire(self, time: int, pipe: Any | None) -> None:
+        """Sets an expire flag on key name for time seconds.
+        """
         execute = False
         if not pipe:
             pipe = self.connection.pipeline()
@@ -218,20 +276,42 @@ class BloomFilter:
 
 
 class ScalableBloomFilter:
-   
+
     SMALL_SET_GROWTH = 2
     LARGE_SET_GROWTH = 4
 
     def __init__(
         self,
         connection,
-        name,
-        initial_capacity=1000,
-        error_rate=0.001,
-        scale=LARGE_SET_GROWTH,
-        ratio=0.9,
-        threshold_scale=0.9
+        name: str,
+        initial_capacity: Optional[int] = 1000,
+        error_rate: Optional[float] = 0.001,
+        scale: Optional[int] = LARGE_SET_GROWTH,
+        ratio: Optional[float] = 0.9,
+        threshold_scale: Optional[float] = 0.9
     ):
+        """
+        Initialize a new ScalableBloomFilter.
+
+        Parameters
+        ----------
+        connection : Redis Connection
+            The Redis Connection.
+        name : str
+            A bloom filter name.
+        initial_capacity : int, optional
+            A initial capacity of the bloom filter, default is 1000.
+        error_rate : float, optional
+            A initial error_rate of the bloom filter, default is 0.001.
+        scale: int, optional
+            A scale factor for scaling up capacity. default is 4.
+        ratio: float, optional
+            A scale factor for scaling up error_rate. default is 0.9.
+        threshold_scale: float, optional
+            A threshold factor for capacity. Capacity multiplies with threshold_scale 
+            to set count threshold for scaling up. Default is 0.9.  
+
+        """
         self.name = name
         self.meta_name = f'sbfmeta:{name}'
         self.connection = connection
@@ -258,8 +338,17 @@ class ScalableBloomFilter:
             'threshold_scale': self.threshold_scale
         })
 
-    def _get_next_filter(self):
+    def _get_next_filter(self) -> BloomFilter:
+        """Creates a new bloom filter with scale factors. Scales capacity and error_rate.
+        Appends to filters and returns the newly created bloom filter.
+        Capacity scales up with scale, with a maximum of 1000000000.
+        Error_rate scales up with ratio, with a minimum of 0.000001.
+
+        Returns:
+            The newly created BloomFilter object.
+        """
         if not self.filters:
+            # initialize a new BloomFilter with the initial capacity and error_rate
             bf_name = f'{self.name}:bf0'
             bf = BloomFilter(
                 self.connection,
@@ -271,7 +360,7 @@ class ScalableBloomFilter:
             self.connection.sadd(self.name, bf.name)
         else:
             bf = self.filters[-1]
-            # check count vs 90% capacity, leave room to prevent race condition 
+            # check count against the capacity threshold to reduce race conditions
             if bf.count >= bf.capacity * self.threshold_scale:
                 bf_name = f'{self.name}:bf{len(self.filters)}'
                 bf = BloomFilter(
@@ -284,26 +373,57 @@ class ScalableBloomFilter:
                 self.connection.sadd(self.name, bf.name)
         return bf
 
-    def __contains__(self, key):
+    def __contains__(self, key: Any) -> bool:
+        """Checks if any bloom filter contains the item key.
+        False positive is possible.
+
+        Args:
+            key: the item needed to be checked
+
+        Returns:
+            True if any bloom filter contains the item. Otherwise returns false.
+        """
         for f in reversed(self.filters):
             if key in f:
                 return True
         return False
 
-    def add(self, key):
+    def add(self, key: Any):
+        """Checks the current count of the bloom filter against the capacity, then scales up when needed.
+        Adds the item key into the bloom filter.
+
+        Args:
+            key: a item need to be added.
+
+        Returns:
+            A boolean returns true indicating all bits are already set to 1, 
+            otherwise sets the bits to 1 and increase count by 1.
+            Or an IndexError when current count reaches the capacity.
+        """
+        # Race conditions may occur
         bf = self._get_next_filter()
         return bf.add(key)
 
-    def bulk_add(self, keys):
+    def bulk_add(self, keys: List[Any]):
+        """Checks current count against capacist, then scales up when needed. 
+        Adds a chunk of items into bloom filter.
+
+        Args:
+            keys: a list of items.
+        """
         index = 0
         while index < len(keys):
+            # Race conditions may occur
             bf = self._get_next_filter()
             chunk_size = min(bf.capacity - bf.count, len(keys))
             chunk = keys[index:index + chunk_size]
             bf.bulk_add(chunk)
             index += chunk_size
 
-    def flush(self):
+    def flush(self) -> None:
+        """Deletes one or more keys specified by names.
+        Deletes all filters.
+        """
         pipe = self.connection.pipeline()
         pipe.delete(self.name)
         pipe.delete(self.meta_name)
@@ -313,7 +433,9 @@ class ScalableBloomFilter:
         self.filters = []
         self._create_meta()
 
-    def expire(self, time):
+    def expire(self, time: int) -> None:
+        """Sets an expire flag on key name for time seconds.
+        """
         pipe = self.connection.pipeline()
         pipe.expire(self.name, time)
         pipe.expire(self.meta_name, time)
@@ -322,9 +444,9 @@ class ScalableBloomFilter:
         pipe.execute()
 
     @property
-    def capacity(self):
+    def capacity(self) -> int:
         return sum([bf.capacity for bf in self.filters])
 
     @property
-    def count(self):
+    def count(self) -> int:
         return sum([bf.count for bf in self.filters])
