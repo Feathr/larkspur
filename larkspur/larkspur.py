@@ -2,6 +2,7 @@ import math
 import hashlib
 from struct import pack, unpack
 from typing import Any, List, Optional
+from redis.client import Pipeline, Redis
 
 
 def deserialize_hm(hm) -> dict:
@@ -17,7 +18,7 @@ def deserialize_hm(hm) -> dict:
     return out
 
 
-def make_hashes(num_slices: int, num_bits: Any):
+def make_hashes(num_slices: int, num_bits: int):
     """Makes hashes. Determine the hash function for each slice.
 
     Args:
@@ -112,7 +113,7 @@ def make_hashes(num_slices: int, num_bits: Any):
 
 class BloomFilter:
 
-    def __init__(self, connection, name: str, capacity: int, error_rate: Optional[float] = 0.001) -> None:
+    def __init__(self, connection: Redis, name: str, capacity: int, error_rate: Optional[float] = 0.001) -> None:
         """
         Initialize a new BloomFilter.
 
@@ -187,7 +188,7 @@ class BloomFilter:
         res = pipe.execute()
         return all(res)
 
-    def add(self, key: Any, skip_check: Optional[bool] = False):
+    def add(self, key: Any):
         """Adds an item key into bloom filter.
         Raises IndexError if the current count is larger than its capacity.
         Hashes the item key and adds into the redis bitfield.
@@ -245,7 +246,7 @@ class BloomFilter:
                 buf = []
         self.count = self.connection.hincrby(self.meta_name, 'count', bulk_increment)
 
-    def flush(self, pipe: Any | None) -> None:
+    def flush(self, pipe: Optional[Pipeline]) -> None:
         """Deletes one or more keys specified by names.
         Sets count as 0.
         """
@@ -260,7 +261,7 @@ class BloomFilter:
             pipe.execute()
         self.count = 0
 
-    def expire(self, time: int, pipe: Any | None) -> None:
+    def expire(self, time: int, pipe: Optional[Pipeline]) -> None:
         """Sets an expire flag on key name for time seconds.
         """
         execute = False
@@ -282,7 +283,7 @@ class ScalableBloomFilter:
 
     def __init__(
         self,
-        connection,
+        connection: Redis,
         name: str,
         initial_capacity: Optional[int] = 1000,
         error_rate: Optional[float] = 0.001,
