@@ -10,7 +10,7 @@ def deserialize_hm(hm) -> dict:
     out = {}
     for key, value in hm.items():
         decoded_key = key.decode()
-        if decoded_key in ['error_rate', 'ratio']:
+        if decoded_key in ['error_rate', 'ratio', 'threshold_scale']:
             parsed = float(value.decode())
         else:
             parsed = int(value.decode())
