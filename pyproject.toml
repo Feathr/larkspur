@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "larkspur"
-version = "0.2.2"
+version = "0.2.3"
 description = "a Redis-backed, scalable Bloom filter"
 authors = ["Thomas R Storey <orey.st@protonmail.com>"]
 
