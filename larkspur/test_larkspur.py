@@ -7,7 +7,7 @@ from .larkspur import BloomFilter, ScalableBloomFilter
 class LarkspurTestCase(unittest.TestCase):
 
     def setUp(self):
-        self.r = redis.StrictRedis(host='redis', db=3)
+        self.r = redis.StrictRedis(db=3)
         self.r.flushdb()
 
 
@@ -52,7 +52,7 @@ class TestBloomFilter(LarkspurTestCase):
         members = [str(ObjectId()) for x in range(1000)]
         bf.bulk_add(members)
         assert bf.count >= 990
-        bf.flush()
+        bf.flush(None)
         assert bf.count == 0
         assert(all([oid not in bf for oid in members]))
 
