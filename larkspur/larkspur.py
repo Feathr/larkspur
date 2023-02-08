@@ -1,8 +1,11 @@
 import math
 import hashlib
 from struct import pack, unpack
-from typing import Any, List, Optional, Union
+from typing import List, Optional, Union
 from redis.client import Pipeline, Redis
+
+
+KeyType = Union[bytes, str, int, float]
 
 
 def deserialize_hm(hm) -> dict:
@@ -84,7 +87,7 @@ def make_hashes(num_slices: int, num_bits: int):
         ) for i in range(0, num_salts)
     )
 
-    def hasher(key: Any):
+    def hasher(key: KeyType):
         """Hashes the input item key.
         """
         if isinstance(key, str):
@@ -167,7 +170,7 @@ class BloomFilter:
             'count': self.count
         })
 
-    def __contains__(self, key: Any) -> bool:
+    def __contains__(self, key: KeyType) -> bool:
         """Checks if bloom filter contains an item by checking if all bits of the hashed item are 1.
         Contains false positive results.
 
@@ -188,7 +191,7 @@ class BloomFilter:
         res = pipe.execute()
         return all(res)
 
-    def add(self, key: Any):
+    def add(self, key: KeyType):
         """Adds an item key into bloom filter.
         Raises IndexError if the current count is larger than its capacity.
         Hashes the item key and adds into the redis bitfield.
@@ -217,7 +220,7 @@ class BloomFilter:
             self.count = self.connection.hincrby(self.meta_name, 'count', 1)
         return already_present
 
-    def bulk_add(self, keys: List[Any]):
+    def bulk_add(self, keys: List[KeyType]):
         """Adds items in chunk into bloom filter.
         Raises IndexError if the current count is larger than its capacity.
         For each item, hashes the item key and adds into redis bitfield.
@@ -374,7 +377,7 @@ class ScalableBloomFilter:
                 self.connection.sadd(self.name, bf.name)
         return bf
 
-    def __contains__(self, key: Any) -> bool:
+    def __contains__(self, key: KeyType) -> bool:
         """Checks if any bloom filter contains the item key.
         False positive is possible.
 
@@ -408,7 +411,7 @@ class ScalableBloomFilter:
         bf = self._get_next_filter()
         return bf.add(key)
 
-    def bulk_add(self, keys: List[Any]):
+    def bulk_add(self, keys: List[KeyType]):
         """Checks current count against capacist, then scales up when needed. 
         Adds a chunk of items into bloom filter.
 
