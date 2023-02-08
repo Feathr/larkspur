@@ -392,7 +392,7 @@ class ScalableBloomFilter:
                 return True
         return False
 
-    def add(self, key: Union[bytes, str]) -> bool:
+    def add(self, key: KeyType) -> bool:
         """Adds the item key into the bloom filter.
 
         Args:
