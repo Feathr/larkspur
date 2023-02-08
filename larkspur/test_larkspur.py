@@ -118,3 +118,11 @@ class TestScalableBloomFilter(LarkspurTestCase):
             assert self.r.ttl(bf.meta_name) == 60
         assert self.r.ttl(sbf.name) == 60
         assert self.r.ttl(sbf.meta_name) == 60
+
+    def test_cardinality(self):
+        sbf = ScalableBloomFilter(self.r, 'test', initial_capacity=1)
+        member = str(ObjectId())
+        # Create a new key
+        assert not sbf.add(member)
+        # Try to create the same key again
+        assert sbf.add(member)

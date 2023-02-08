@@ -1,6 +1,7 @@
 import math
 import hashlib
 from struct import pack, unpack
+from typing import Union
 
 
 def deserialize_hm(hm):
@@ -285,7 +286,22 @@ class ScalableBloomFilter:
                 return True
         return False
 
-    def add(self, key):
+    def add(self, key: Union[bytes, str]) -> bool:
+        """Adds the item key into the bloom filter.
+
+        Args:
+            key: The item to be added.
+
+        Returns:
+            True if key exists and False if it not and it was added
+        """
+        # Check to see if any filters already contain the key.
+        # This check is necessary because self._get_next_filter will return the latest 
+        # BloomFilter which may not contain this key, but the key may still exist
+        # in an earlier BloomFilter if initial_capacity was exceeded.
+        if self.__contains__(key):
+            return True
+
         bf = self._get_next_filter()
         return bf.add(key)
 
