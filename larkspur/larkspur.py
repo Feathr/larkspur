@@ -1,8 +1,11 @@
 import math
 import hashlib
 from struct import pack, unpack
-from typing import Any, List, Optional
+from typing import List, Optional, Union
 from redis.client import Pipeline, Redis
+
+
+KeyType = Union[bytes, str, int, float]
 
 
 def deserialize_hm(hm) -> dict:
@@ -84,7 +87,7 @@ def make_hashes(num_slices: int, num_bits: int):
         ) for i in range(0, num_salts)
     )
 
-    def hasher(key: Any):
+    def hasher(key: KeyType):
         """Hashes the input item key.
         """
         if isinstance(key, str):
@@ -167,7 +170,7 @@ class BloomFilter:
             'count': self.count
         })
 
-    def __contains__(self, key: Any) -> bool:
+    def __contains__(self, key: KeyType) -> bool:
         """Checks if bloom filter contains an item by checking if all bits of the hashed item are 1.
         Contains false positive results.
 
@@ -188,7 +191,7 @@ class BloomFilter:
         res = pipe.execute()
         return all(res)
 
-    def add(self, key: Any):
+    def add(self, key: KeyType):
         """Adds an item key into bloom filter.
         Raises IndexError if the current count is larger than its capacity.
         Hashes the item key and adds into the redis bitfield.
@@ -217,7 +220,7 @@ class BloomFilter:
             self.count = self.connection.hincrby(self.meta_name, 'count', 1)
         return already_present
 
-    def bulk_add(self, keys: List[Any]):
+    def bulk_add(self, keys: List[KeyType]):
         """Adds items in chunk into bloom filter.
         Raises IndexError if the current count is larger than its capacity.
         For each item, hashes the item key and adds into redis bitfield.
@@ -374,7 +377,7 @@ class ScalableBloomFilter:
                 self.connection.sadd(self.name, bf.name)
         return bf
 
-    def __contains__(self, key: Any) -> bool:
+    def __contains__(self, key: KeyType) -> bool:
         """Checks if any bloom filter contains the item key.
         False positive is possible.
 
@@ -389,23 +392,26 @@ class ScalableBloomFilter:
                 return True
         return False
 
-    def add(self, key: Any):
-        """Checks the current count of the bloom filter against the capacity, then scales up when needed.
-        Adds the item key into the bloom filter.
+    def add(self, key: KeyType) -> bool:
+        """Adds the item key into the bloom filter.
 
         Args:
-            key: a item need to be added.
+            key: The item to be added.
 
         Returns:
-            A boolean returns true indicating all bits are already set to 1, 
-            otherwise sets the bits to 1 and increase count by 1.
-            Or an IndexError when current count reaches the capacity.
+            True if key exists and False if it not and it was added
         """
-        # Race conditions may occur
+        # Check to see if any filters already contain the key.
+        # This check is necessary because self._get_next_filter will return the latest 
+        # BloomFilter which may not contain this key, but the key may still exist
+        # in an earlier BloomFilter if initial_capacity was exceeded.
+        if key in self:
+            return True
+
         bf = self._get_next_filter()
         return bf.add(key)
 
-    def bulk_add(self, keys: List[Any]):
+    def bulk_add(self, keys: List[KeyType]):
         """Checks current count against capacist, then scales up when needed. 
         Adds a chunk of items into bloom filter.
 
