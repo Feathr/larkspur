@@ -405,7 +405,7 @@ class ScalableBloomFilter:
         # This check is necessary because self._get_next_filter will return the latest 
         # BloomFilter which may not contain this key, but the key may still exist
         # in an earlier BloomFilter if initial_capacity was exceeded.
-        if self.__contains__(key):
+        if key in self:
             return True
 
         bf = self._get_next_filter()
