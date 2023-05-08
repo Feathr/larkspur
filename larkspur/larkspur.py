@@ -327,7 +327,11 @@ class ScalableBloomFilter:
         self.initial_capacity = meta.get('initial_capacity') or initial_capacity
         if not self.connection.exists(self.meta_name):
             self._create_meta()
-        filter_names = sorted(list(self.connection.smembers(self.name)))
+        filter_names = list(self.connection.smembers(self.name))
+        # Sort the bloomfilters according to their bf# as they are in format NAME:bf0
+        filter_names.sort(
+            key=lambda bf_name: int(bf_name.decode("utf-8").split(":")[-1][2:])
+        )
         self.filters = [
             BloomFilter(connection, fn.decode('utf8'), self.initial_capacity)
             for fn in filter_names
